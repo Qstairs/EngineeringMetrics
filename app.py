@@ -22,15 +22,12 @@ def create_app():
     app = Flask(__name__)
 
     # Configuration
+    basedir = os.path.abspath(os.path.dirname(__file__))
     app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "dev_key")
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_recycle": 300,
-        "pool_pre_ping": True,
-    }
+    app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(basedir, 'app.db')
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    logger.info(f"Database URL configured: {app.config['SQLALCHEMY_DATABASE_URI'] is not None}")
+    logger.info(f"Database URL configured: SQLite database at {os.path.join(basedir, 'app.db')}")
 
     # Initialize extensions
     try:
