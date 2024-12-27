@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="metrics-card">
+            <h3>GitHub Metrics</h3>
+            <canvas id="githubMetricsChart"></canvas>
+            <div class="mt-3">
+                <h5>Four Keys Metrics</h5>
+                <ul class="list-unstyled">
+                    <li>Deployment Frequency: {{ github_metrics.deployment_frequency.value }} {{ github_metrics.deployment_frequency.unit }}</li>
+                    <li>Lead Time: {{ github_metrics.lead_time.value }} {{ github_metrics.lead_time.unit }}</li>
+                    <li>Change Failure Rate: {{ github_metrics.change_failure_rate.value }}{{ github_metrics.change_failure_rate.unit }}</li>
+                    <li>Time to Restore: {{ github_metrics.time_to_restore.value }} {{ github_metrics.time_to_restore.unit }}</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="metrics-card">
+            <h3>Jira Metrics</h3>
+            <canvas id="jiraMetricsChart"></canvas>
+            <div class="mt-3">
+                <h5>Ticket Metrics</h5>
+                <ul class="list-unstyled">
+                    <li>Completion Rate: {{ jira_metrics.ticket_completion_rate.value }}{{ jira_metrics.ticket_completion_rate.unit }}</li>
+                    <li>Average Resolution Time: {{ jira_metrics.average_resolution_time.value }} {{ jira_metrics.average_resolution_time.unit }}</li>
+                    <li>Backlog Health: {{ jira_metrics.backlog_health.value }}</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.githubMetrics = {{ github_metrics|tojson|safe }};
+    window.jiraMetrics = {{ jira_metrics|tojson|safe }};
+</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}
