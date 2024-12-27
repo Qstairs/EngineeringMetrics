@@ -1,7 +1,6 @@
-import requests
-from datetime import datetime, timedelta
-import logging
 import os
+import logging
+from datetime import datetime, timedelta
 from github import Github
 from github.GithubException import GithubException
 
@@ -10,33 +9,33 @@ logger = logging.getLogger(__name__)
 class GitHubService:
     def __init__(self, token=None):
         self.token = token or os.environ.get('GITHUB_TOKEN')
-        self.base_url = "https://api.github.com"
         if self.token:
             try:
                 self.github = Github(self.token)
-                self.headers = {
-                    "Authorization": f"token {self.token}",
-                    "Accept": "application/vnd.github.v3+json"
-                }
                 # Test connection
                 self.github.get_user().login
                 logger.info("Successfully authenticated with GitHub")
             except GithubException as e:
                 logger.error(f"Failed to authenticate with GitHub: {str(e)}")
                 self.github = None
-                self.headers = {"Accept": "application/vnd.github.v3+json"}
         else:
             logger.warning("No GitHub token provided")
             self.github = None
-            self.headers = {"Accept": "application/vnd.github.v3+json"}
 
     def get_four_keys_metrics(self):
+        """
+        Four Keysメトリクスを取得します
+        - デプロイメント頻度
+        - リードタイム
+        - 変更失敗率
+        - 復旧時間
+        """
         if not self.github:
             logger.warning("GitHub client not initialized, returning empty metrics")
             return self._get_empty_metrics()
 
         try:
-            # Calculate metrics for the last 30 days
+            # 過去30日間のメトリクスを計算
             end_date = datetime.utcnow()
             start_date = end_date - timedelta(days=30)
 
@@ -53,37 +52,46 @@ class GitHubService:
             return self._get_empty_metrics()
 
     def _get_deployment_frequency(self, start_date, end_date):
+        """デプロイメント頻度を計算"""
+        if not self.github:
+            return {"value": 0, "unit": "per day"}
+
         try:
             total_deployments = 0
-            for repo in self.github.get_user().get_repos():
+            user = self.github.get_user()
+            for repo in user.get_repos():
                 try:
                     deployments = repo.get_deployments()
                     for deployment in deployments:
-                        created_at = deployment.created_at
-                        if start_date <= created_at <= end_date:
+                        if start_date <= deployment.created_at <= end_date:
                             total_deployments += 1
                 except GithubException as e:
                     logger.warning(f"Error fetching deployments for repo {repo.name}: {str(e)}")
                     continue
 
-            days = (end_date - start_date).days
-            frequency = total_deployments / days if days > 0 else 0
+            days = (end_date - start_date).days or 1
+            frequency = total_deployments / days
             return {"value": round(frequency, 2), "unit": "per day"}
         except Exception as e:
             logger.error(f"Error calculating deployment frequency: {str(e)}")
             return {"value": 0, "unit": "per day"}
 
     def _get_lead_time(self, start_date, end_date):
+        """コード変更のリードタイムを計算"""
+        if not self.github:
+            return {"value": 0, "unit": "days"}
+
         try:
             total_lead_time = 0
             total_prs = 0
+            user = self.github.get_user()
 
-            for repo in self.github.get_user().get_repos():
+            for repo in user.get_repos():
                 try:
                     pulls = repo.get_pulls(state='closed', sort='updated', direction='desc')
                     for pr in pulls:
                         if pr.merged and start_date <= pr.merged_at <= end_date:
-                            lead_time = (pr.merged_at - pr.created_at).total_seconds() / 86400  # Convert to days
+                            lead_time = (pr.merged_at - pr.created_at).total_seconds() / 86400
                             total_lead_time += lead_time
                             total_prs += 1
                 except GithubException as e:
@@ -97,11 +105,16 @@ class GitHubService:
             return {"value": 0, "unit": "days"}
 
     def _get_change_failure_rate(self, start_date, end_date):
+        """変更失敗率を計算"""
+        if not self.github:
+            return {"value": 0, "unit": "percent"}
+
         try:
             total_deployments = 0
             failed_deployments = 0
+            user = self.github.get_user()
 
-            for repo in self.github.get_user().get_repos():
+            for repo in user.get_repos():
                 try:
                     deployments = repo.get_deployments()
                     for deployment in deployments:
@@ -121,16 +134,21 @@ class GitHubService:
             return {"value": 0, "unit": "percent"}
 
     def _get_time_to_restore(self, start_date, end_date):
+        """サービス復旧時間を計算"""
+        if not self.github:
+            return {"value": 0, "unit": "hours"}
+
         try:
             total_restore_time = 0
             total_incidents = 0
+            user = self.github.get_user()
 
-            for repo in self.github.get_user().get_repos():
+            for repo in user.get_repos():
                 try:
                     issues = repo.get_issues(state='closed', labels=['incident'])
                     for issue in issues:
                         if start_date <= issue.closed_at <= end_date:
-                            restore_time = (issue.closed_at - issue.created_at).total_seconds() / 3600  # Convert to hours
+                            restore_time = (issue.closed_at - issue.created_at).total_seconds() / 3600
                             total_restore_time += restore_time
                             total_incidents += 1
                 except GithubException as e:
@@ -144,6 +162,7 @@ class GitHubService:
             return {"value": 0, "unit": "hours"}
 
     def _get_empty_metrics(self):
+        """メトリクスの初期値を返す"""
         return {
             "deployment_frequency": {"value": 0, "unit": "per day"},
             "lead_time": {"value": 0, "unit": "days"},

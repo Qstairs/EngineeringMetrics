@@ -1,6 +1,2 @@
-# リポジトリのクローン
-git clone <repository-url>
+git clone [リポジトリURL]
 cd engineering-insights
-
-# 依存関係のインストール
-pip install -r requirements.txt
