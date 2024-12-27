@@ -2,6 +2,7 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
 from app import db, login_manager
+import json
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -35,6 +36,15 @@ class DashboardPreference(db.Model):
     refresh_interval = db.Column(db.Integer, default=300)  # in seconds
     chart_type = db.Column(db.String(20), default='bar')  # bar or line
     theme = db.Column(db.String(20), default='light')  # light or dark
+
+    def to_dict(self):
+        return {
+            'layout': self.layout,
+            'metrics_order': json.loads(self.metrics_order),
+            'refresh_interval': self.refresh_interval,
+            'chart_type': self.chart_type,
+            'theme': self.theme
+        }
 
 @login_manager.user_loader
 def load_user(id):

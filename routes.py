@@ -5,6 +5,11 @@ from models import User, db, DashboardPreference
 from services.github_service import GitHubService
 from services.jira_service import JiraService
 import json
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 def register_routes(app):
     @app.route('/')
@@ -30,9 +35,16 @@ def register_routes(app):
             # Create default dashboard preferences
             preferences = DashboardPreference(user=user)
 
-            db.session.add(user)
-            db.session.add(preferences)
-            db.session.commit()
+            try:
+                db.session.add(user)
+                db.session.add(preferences)
+                db.session.commit()
+                logger.info(f"Created new user: {user.username}")
+            except Exception as e:
+                logger.error(f"Error creating user: {str(e)}")
+                db.session.rollback()
+                flash('Error creating account')
+                return redirect(url_for('signup'))
 
             login_user(user)
             return redirect(url_for('index'))
@@ -61,52 +73,70 @@ def register_routes(app):
     @app.route('/dashboard')
     @login_required
     def dashboard():
-        github_service = GitHubService(current_user.github_token)
-        jira_service = JiraService(current_user.jira_token)
+        try:
+            github_service = GitHubService(current_user.github_token)
+            jira_service = JiraService(current_user.jira_token)
 
-        github_metrics = github_service.get_four_keys_metrics()
-        jira_metrics = jira_service.get_metrics()
+            github_metrics = github_service.get_four_keys_metrics()
+            jira_metrics = jira_service.get_metrics()
 
-        # Get or create user preferences
-        preferences = current_user.dashboard_preferences
-        if not preferences:
-            preferences = DashboardPreference(user=current_user)
-            db.session.add(preferences)
-            db.session.commit()
+            # Get or create user preferences
+            preferences = current_user.dashboard_preferences
+            if not preferences:
+                preferences = DashboardPreference(user=current_user)
+                db.session.add(preferences)
+                db.session.commit()
 
-        return render_template('dashboard.html',
-                             github_metrics=github_metrics,
-                             jira_metrics=jira_metrics,
-                             preferences=preferences)
+            # Convert preferences to dictionary for JSON serialization
+            preferences_dict = preferences.to_dict()
+            logger.debug(f"Dashboard preferences: {preferences_dict}")
+
+            return render_template('dashboard.html',
+                                github_metrics=github_metrics,
+                                jira_metrics=jira_metrics,
+                                preferences=preferences_dict)
+        except Exception as e:
+            logger.error(f"Error in dashboard route: {str(e)}")
+            flash('Error loading dashboard')
+            return redirect(url_for('index'))
 
     @app.route('/api/preferences', methods=['POST'])
     @login_required
     def update_preferences():
-        data = request.get_json()
-        preferences = current_user.dashboard_preferences
+        try:
+            data = request.get_json()
+            preferences = current_user.dashboard_preferences
 
-        preferences.layout = data.get('layout', preferences.layout)
-        preferences.chart_type = data.get('chart_type', preferences.chart_type)
-        preferences.theme = data.get('theme', preferences.theme)
-        preferences.refresh_interval = data.get('refresh_interval', preferences.refresh_interval)
-        preferences.metrics_order = json.dumps(data.get('metrics_order', json.loads(preferences.metrics_order)))
+            preferences.layout = data.get('layout', preferences.layout)
+            preferences.chart_type = data.get('chart_type', preferences.chart_type)
+            preferences.theme = data.get('theme', preferences.theme)
+            preferences.refresh_interval = data.get('refresh_interval', preferences.refresh_interval)
+            preferences.metrics_order = json.dumps(data.get('metrics_order', json.loads(preferences.metrics_order)))
 
-        db.session.commit()
-        return jsonify({'status': 'success'})
+            db.session.commit()
+            logger.info(f"Updated preferences for user {current_user.username}")
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            logger.error(f"Error updating preferences: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @app.route('/api/metrics/refresh')
     @login_required
     def refresh_metrics():
-        github_service = GitHubService(current_user.github_token)
-        jira_service = JiraService(current_user.jira_token)
+        try:
+            github_service = GitHubService(current_user.github_token)
+            jira_service = JiraService(current_user.jira_token)
 
-        github_metrics = github_service.get_four_keys_metrics()
-        jira_metrics = jira_service.get_metrics()
+            github_metrics = github_service.get_four_keys_metrics()
+            jira_metrics = jira_service.get_metrics()
 
-        return jsonify({
-            'github_metrics': github_metrics,
-            'jira_metrics': jira_metrics
-        })
+            return jsonify({
+                'github_metrics': github_metrics,
+                'jira_metrics': jira_metrics
+            })
+        except Exception as e:
+            logger.error(f"Error refreshing metrics: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @app.route('/logout')
     def logout():
