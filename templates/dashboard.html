@@ -1,8 +1,47 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-6">
+<div class="dashboard-controls mb-4">
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Dashboard Preferences</h5>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Layout</label>
+                    <select class="form-select" id="layoutPreference">
+                        <option value="grid" {% if preferences.layout == 'grid' %}selected{% endif %}>Grid</option>
+                        <option value="list" {% if preferences.layout == 'list' %}selected{% endif %}>List</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Chart Type</label>
+                    <select class="form-select" id="chartType">
+                        <option value="bar" {% if preferences.chart_type == 'bar' %}selected{% endif %}>Bar</option>
+                        <option value="line" {% if preferences.chart_type == 'line' %}selected{% endif %}>Line</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Refresh Interval</label>
+                    <select class="form-select" id="refreshInterval">
+                        <option value="300" {% if preferences.refresh_interval == 300 %}selected{% endif %}>5 minutes</option>
+                        <option value="600" {% if preferences.refresh_interval == 600 %}selected{% endif %}>10 minutes</option>
+                        <option value="1800" {% if preferences.refresh_interval == 1800 %}selected{% endif %}>30 minutes</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Theme</label>
+                    <select class="form-select" id="themePreference">
+                        <option value="light" {% if preferences.theme == 'light' %}selected{% endif %}>Light</option>
+                        <option value="dark" {% if preferences.theme == 'dark' %}selected{% endif %}>Dark</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="metricsContainer" class="row {{ 'list-layout' if preferences.layout == 'list' }}">
+    <div class="col-md-6 metrics-card-wrapper" data-metric-type="github">
         <div class="metrics-card">
             <h3>GitHub Metrics</h3>
             <canvas id="githubMetricsChart"></canvas>
@@ -17,7 +56,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-6">
+    <div class="col-md-6 metrics-card-wrapper" data-metric-type="jira">
         <div class="metrics-card">
             <h3>Jira Metrics</h3>
             <canvas id="jiraMetricsChart"></canvas>
@@ -36,6 +75,7 @@
 <script>
     window.githubMetrics = {{ github_metrics|tojson|safe }};
     window.jiraMetrics = {{ jira_metrics|tojson|safe }};
+    window.userPreferences = {{ preferences|tojson|safe }};
 </script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

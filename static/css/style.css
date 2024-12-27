@@ -2,11 +2,23 @@
     --primary-blue: #007bff;
     --light-blue: #e3f2fd;
     --white: #ffffff;
+    --dark-bg: #1a1a1a;
+    --dark-card: #2d2d2d;
+    --dark-text: #ffffff;
+    --light-text: #000000;
+    --border-color: rgba(0,0,0,0.1);
 }
 
 body {
     background-color: var(--light-blue);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--light-text);
+    transition: background-color 0.3s ease;
+}
+
+body.dark-theme {
+    background-color: var(--dark-bg);
+    color: var(--dark-text);
 }
 
 .navbar {
@@ -25,6 +37,16 @@ body {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     margin-bottom: 20px;
     padding: 20px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.dark-theme .metrics-card {
+    background-color: var(--dark-card);
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.metrics-card:hover {
+    transform: translateY(-2px);
 }
 
 .chart-container {
@@ -43,8 +65,61 @@ body {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+.dark-theme .login-container {
+    background-color: var(--dark-card);
+}
+
+/* Dashboard Controls */
+.dashboard-controls {
+    margin-bottom: 2rem;
+}
+
+.dashboard-controls .card {
+    background-color: var(--white);
+    transition: background-color 0.3s ease;
+}
+
+.dark-theme .dashboard-controls .card {
+    background-color: var(--dark-card);
+}
+
+/* Layout Styles */
+.list-layout .metrics-card-wrapper {
+    width: 100%;
+    max-width: 100%;
+    flex: 0 0 100%;
+}
+
+.metrics-card-wrapper {
+    cursor: move;
+    transition: width 0.3s ease;
+}
+
+/* Form Controls */
+.form-select, .form-control {
+    background-color: var(--white);
+    border-color: var(--border-color);
+}
+
+.dark-theme .form-select,
+.dark-theme .form-control {
+    background-color: var(--dark-card);
+    border-color: rgba(255,255,255,0.1);
+    color: var(--dark-text);
+}
+
+/* Responsive Design */
 @media (max-width: 768px) {
     .metrics-card {
         margin: 10px;
     }
+
+    .dashboard-controls .row > div {
+        margin-bottom: 1rem;
+    }
+}
+
+/* Chart Customization */
+.dark-theme canvas {
+    filter: invert(1) hue-rotate(180deg);
 }
