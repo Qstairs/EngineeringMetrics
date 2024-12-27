@@ -2,21 +2,37 @@ import requests
 from datetime import datetime, timedelta
 import logging
 import os
+from github import Github
+from github.GithubException import GithubException
 
 logger = logging.getLogger(__name__)
 
 class GitHubService:
-    def __init__(self, token):
+    def __init__(self, token=None):
         self.token = token or os.environ.get('GITHUB_TOKEN')
         self.base_url = "https://api.github.com"
-        self.headers = {
-            "Authorization": f"token {self.token}" if self.token else "",
-            "Accept": "application/vnd.github.v3+json"
-        }
+        if self.token:
+            try:
+                self.github = Github(self.token)
+                self.headers = {
+                    "Authorization": f"token {self.token}",
+                    "Accept": "application/vnd.github.v3+json"
+                }
+                # Test connection
+                self.github.get_user().login
+                logger.info("Successfully authenticated with GitHub")
+            except GithubException as e:
+                logger.error(f"Failed to authenticate with GitHub: {str(e)}")
+                self.github = None
+                self.headers = {"Accept": "application/vnd.github.v3+json"}
+        else:
+            logger.warning("No GitHub token provided")
+            self.github = None
+            self.headers = {"Accept": "application/vnd.github.v3+json"}
 
     def get_four_keys_metrics(self):
-        if not self.token:
-            logger.warning("No GitHub token provided")
+        if not self.github:
+            logger.warning("GitHub client not initialized, returning empty metrics")
             return self._get_empty_metrics()
 
         try:
@@ -38,25 +54,17 @@ class GitHubService:
 
     def _get_deployment_frequency(self, start_date, end_date):
         try:
-            # Get all repositories for the authenticated user
-            repos_response = requests.get(f"{self.base_url}/user/repos", headers=self.headers)
-            repos_response.raise_for_status()
-            repos = repos_response.json()
-
             total_deployments = 0
-            for repo in repos:
-                # Get deployments for each repository
-                deployments_url = f"{self.base_url}/repos/{repo['full_name']}/deployments"
-                deployments_response = requests.get(
-                    deployments_url,
-                    headers=self.headers,
-                    params={
-                        'since': start_date.isoformat(),
-                        'until': end_date.isoformat()
-                    }
-                )
-                if deployments_response.status_code == 200:
-                    total_deployments += len(deployments_response.json())
+            for repo in self.github.get_user().get_repos():
+                try:
+                    deployments = repo.get_deployments()
+                    for deployment in deployments:
+                        created_at = deployment.created_at
+                        if start_date <= created_at <= end_date:
+                            total_deployments += 1
+                except GithubException as e:
+                    logger.warning(f"Error fetching deployments for repo {repo.name}: {str(e)}")
+                    continue
 
             days = (end_date - start_date).days
             frequency = total_deployments / days if days > 0 else 0
@@ -67,28 +75,22 @@ class GitHubService:
 
     def _get_lead_time(self, start_date, end_date):
         try:
-            # Get merged pull requests
-            pulls_url = f"{self.base_url}/search/issues"
-            query = f"type:pr is:merged merged:{start_date.isoformat()}..{end_date.isoformat()}"
-            pulls_response = requests.get(
-                pulls_url,
-                headers=self.headers,
-                params={'q': query}
-            )
-            pulls_response.raise_for_status()
-            pulls_data = pulls_response.json()
-
-            if pulls_data['total_count'] == 0:
-                return {"value": 0, "unit": "days"}
-
             total_lead_time = 0
-            for pr in pulls_data['items']:
-                created_at = datetime.strptime(pr['created_at'], '%Y-%m-%dT%H:%M:%SZ')
-                merged_at = datetime.strptime(pr['closed_at'], '%Y-%m-%dT%H:%M:%SZ')
-                lead_time = (merged_at - created_at).total_seconds() / 86400  # Convert to days
-                total_lead_time += lead_time
+            total_prs = 0
 
-            average_lead_time = total_lead_time / pulls_data['total_count']
+            for repo in self.github.get_user().get_repos():
+                try:
+                    pulls = repo.get_pulls(state='closed', sort='updated', direction='desc')
+                    for pr in pulls:
+                        if pr.merged and start_date <= pr.merged_at <= end_date:
+                            lead_time = (pr.merged_at - pr.created_at).total_seconds() / 86400  # Convert to days
+                            total_lead_time += lead_time
+                            total_prs += 1
+                except GithubException as e:
+                    logger.warning(f"Error fetching pull requests for repo {repo.name}: {str(e)}")
+                    continue
+
+            average_lead_time = total_lead_time / total_prs if total_prs > 0 else 0
             return {"value": round(average_lead_time, 2), "unit": "days"}
         except Exception as e:
             logger.error(f"Error calculating lead time: {str(e)}")
@@ -96,35 +98,21 @@ class GitHubService:
 
     def _get_change_failure_rate(self, start_date, end_date):
         try:
-            # Get all deployments and their statuses
-            repos_response = requests.get(f"{self.base_url}/user/repos", headers=self.headers)
-            repos_response.raise_for_status()
-            repos = repos_response.json()
-
             total_deployments = 0
             failed_deployments = 0
 
-            for repo in repos:
-                deployments_url = f"{self.base_url}/repos/{repo['full_name']}/deployments"
-                deployments_response = requests.get(
-                    deployments_url,
-                    headers=self.headers,
-                    params={
-                        'since': start_date.isoformat(),
-                        'until': end_date.isoformat()
-                    }
-                )
-                if deployments_response.status_code == 200:
-                    deployments = deployments_response.json()
-                    total_deployments += len(deployments)
-
+            for repo in self.github.get_user().get_repos():
+                try:
+                    deployments = repo.get_deployments()
                     for deployment in deployments:
-                        status_url = deployment['statuses_url']
-                        status_response = requests.get(status_url, headers=self.headers)
-                        if status_response.status_code == 200:
-                            statuses = status_response.json()
-                            if any(s['state'] == 'failure' for s in statuses):
+                        if start_date <= deployment.created_at <= end_date:
+                            total_deployments += 1
+                            statuses = deployment.get_statuses()
+                            if any(status.state == 'failure' for status in statuses):
                                 failed_deployments += 1
+                except GithubException as e:
+                    logger.warning(f"Error fetching deployment statuses for repo {repo.name}: {str(e)}")
+                    continue
 
             failure_rate = (failed_deployments / total_deployments * 100) if total_deployments > 0 else 0
             return {"value": round(failure_rate, 2), "unit": "percent"}
@@ -134,28 +122,22 @@ class GitHubService:
 
     def _get_time_to_restore(self, start_date, end_date):
         try:
-            # Get issues labeled as incidents/failures that were closed in the time period
-            issues_url = f"{self.base_url}/search/issues"
-            query = f"label:incident closed:{start_date.isoformat()}..{end_date.isoformat()}"
-            issues_response = requests.get(
-                issues_url,
-                headers=self.headers,
-                params={'q': query}
-            )
-            issues_response.raise_for_status()
-            issues_data = issues_response.json()
-
-            if issues_data['total_count'] == 0:
-                return {"value": 0, "unit": "hours"}
-
             total_restore_time = 0
-            for issue in issues_data['items']:
-                created_at = datetime.strptime(issue['created_at'], '%Y-%m-%dT%H:%M:%SZ')
-                closed_at = datetime.strptime(issue['closed_at'], '%Y-%m-%dT%H:%M:%SZ')
-                restore_time = (closed_at - created_at).total_seconds() / 3600  # Convert to hours
-                total_restore_time += restore_time
+            total_incidents = 0
 
-            average_restore_time = total_restore_time / issues_data['total_count']
+            for repo in self.github.get_user().get_repos():
+                try:
+                    issues = repo.get_issues(state='closed', labels=['incident'])
+                    for issue in issues:
+                        if start_date <= issue.closed_at <= end_date:
+                            restore_time = (issue.closed_at - issue.created_at).total_seconds() / 3600  # Convert to hours
+                            total_restore_time += restore_time
+                            total_incidents += 1
+                except GithubException as e:
+                    logger.warning(f"Error fetching incidents for repo {repo.name}: {str(e)}")
+                    continue
+
+            average_restore_time = total_restore_time / total_incidents if total_incidents > 0 else 0
             return {"value": round(average_restore_time, 2), "unit": "hours"}
         except Exception as e:
             logger.error(f"Error calculating time to restore: {str(e)}")
